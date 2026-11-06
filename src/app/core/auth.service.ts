@@ -27,7 +27,7 @@ export class AuthService {
           this.clear();
           break;
         case 'signInWithRedirect_failure':
-          this.error.set('No se pudo completar el inicio de sesión con Cognito.');
+          this.error.set('No pudimos iniciar tu sesión. Intenta de nuevo.');
           break;
         default:
           break;
@@ -51,7 +51,7 @@ export class AuthService {
       const idPayload = tokens.idToken?.payload as Record<string, unknown> | undefined;
 
       if (!this.nonceValido(idPayload)) {
-        this.error.set('El nonce del ID token no coincide: se cerró la sesión por seguridad.');
+        this.error.set('Por seguridad cerramos tu sesión. Vuelve a iniciarla.');
         this.clear();
         await signOut();
         return;

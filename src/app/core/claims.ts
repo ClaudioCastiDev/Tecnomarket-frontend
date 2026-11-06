@@ -1,4 +1,6 @@
 export interface UserClaims {
+  /** Claim "sub": el mismo identificador que guarda el backend en cada pedido (clienteSub). */
+  sub: string;
   usuario: string;
   email: string;
   grupos: string[];
@@ -20,9 +22,11 @@ export function extractClaims(access: Payload, id: Payload): UserClaims {
   const exp = access?.['exp'];
   const email = id?.['email'];
   const username = access?.['username'];
+  const sub = access?.['sub'];
 
   const correo = typeof email === 'string' ? email : '';
   return {
+    sub: typeof sub === 'string' ? sub : '',
     usuario: correo || (typeof username === 'string' ? username : ''),
     email: correo,
     grupos: Array.isArray(groups) ? groups.filter((g): g is string => typeof g === 'string') : [],

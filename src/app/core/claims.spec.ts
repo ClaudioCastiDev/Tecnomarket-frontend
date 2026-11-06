@@ -8,9 +8,11 @@ describe('extractClaims', () => {
         'cognito:groups': ['admin'],
         exp: 1789855775,
         username: 'abc-123',
+        sub: 'sub-ana',
       },
       { email: 'ana@correo.cl' },
     );
+    expect(claims.sub).toBe('sub-ana');
 
     expect(claims.usuario).toBe('ana@correo.cl');
     expect(claims.grupos).toEqual(['admin']);

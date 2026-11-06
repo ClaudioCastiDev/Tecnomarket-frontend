@@ -9,59 +9,95 @@ import { PedidosPage } from './pedidos';
 
 const URL_PEDIDOS = `${environment.apiUrl}/api/pedidos`;
 const URL_PRODUCTOS = `${environment.apiUrl}/api/productos`;
+const MIO = 'sub-ana';
 
-function crearPagina(scopes: string[]) {
+const pedido = (id: number, clienteSub: string, estado = 'PENDIENTE') => ({
+  id,
+  estado,
+  producto: 'Notebook',
+  cantidad: 1,
+  clienteSub,
+  fecha: '2026-11-05T10:00:00',
+});
+
+function crearPagina(
+  scopes: string[],
+  pedidos = [pedido(1, MIO), pedido(2, 'otro-cliente'), pedido(3, MIO, 'ENTREGADO')],
+) {
   TestBed.configureTestingModule({
     providers: [
       provideRouter([]),
       provideHttpClient(),
       provideHttpClientTesting(),
-      { provide: AuthService, useValue: { hasScope: (s: string) => scopes.includes(s) } },
+      {
+        provide: AuthService,
+        useValue: { hasScope: (s: string) => scopes.includes(s), claims: () => ({ sub: MIO }) },
+      },
     ],
   });
   const fixture = TestBed.createComponent(PedidosPage);
   const http = TestBed.inject(HttpTestingController);
-  http.expectOne(URL_PEDIDOS).flush([]);
+  http.expectOne(URL_PEDIDOS).flush(pedidos);
   http.expectOne(URL_PRODUCTOS).flush([{ id: 1, nombre: 'Notebook', precio: 500000, stock: 10 }]);
   fixture.detectChanges();
   return { fixture, http, html: fixture.nativeElement as HTMLElement };
 }
 
 describe('PedidosPage', () => {
-  it('con scope de escritura explica el flujo asíncrono y sugiere los productos del catálogo', async () => {
+  it('muestra solo los pedidos de la persona, del más nuevo al más antiguo, con estados legibles', async () => {
     const { fixture, html } = crearPagina([SCOPE_PEDIDOS_WRITE]);
     await fixture.whenStable();
 
-    expect(html.textContent).toContain('pedido.creado');
-    expect(html.querySelector('datalist option')?.getAttribute('value')).toBe('Notebook');
+    const numeros = [...html.querySelectorAll('.pedido-numero')].map((e) => e.textContent?.trim());
+    expect(numeros).toEqual(['#3', '#1']);
+    expect(html.textContent).toContain('Entregado');
+    expect(html.textContent).not.toContain('ENTREGADO');
   });
 
-  it('sin scope de escritura avisa que el API Gateway responderá 403', async () => {
+  it('no muestra detalles técnicos al cliente', async () => {
+    const { fixture, html } = crearPagina([SCOPE_PEDIDOS_WRITE]);
+    await fixture.whenStable();
+
+    for (const tecnico of ['403', 'scope', 'pedido.creado', 'API Gateway', 'RabbitMQ']) {
+      expect(html.textContent).not.toContain(tecnico);
+    }
+  });
+
+  it('sin permiso de compra lo explica sin códigos y no muestra el formulario', async () => {
     const { fixture, html } = crearPagina([]);
     await fixture.whenStable();
 
-    expect(html.textContent).toContain('403');
+    expect(html.textContent).toContain('no tiene compras habilitadas');
+    expect(html.querySelector('.form-row')).toBeNull();
   });
 
-  it('al crear un pedido muestra que el evento se envió a RabbitMQ', async () => {
+  it('al enviar un pedido por nombre lo confirma y recarga la lista', async () => {
     const { fixture, http, html } = crearPagina([SCOPE_PEDIDOS_WRITE]);
     await fixture.whenStable();
 
     html.querySelector<HTMLButtonElement>('.form-row button')!.click();
     const post = http.expectOne((r) => r.method === 'POST' && r.url === URL_PEDIDOS);
     expect(post.request.body).toEqual({ producto: 'Notebook', cantidad: 1 });
-    post.flush({
-      id: 7,
-      estado: 'PENDIENTE',
-      producto: 'Notebook',
-      cantidad: 1,
-      clienteSub: 'x',
-      fecha: '',
-    });
-    http.expectOne(URL_PEDIDOS).flush([]);
+    post.flush(pedido(7, MIO));
+    http.expectOne(URL_PEDIDOS).flush([pedido(7, MIO)]);
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(html.querySelector('.panel')?.textContent).toContain('Pedido #7 creado');
+    expect(html.querySelector('.aviso.ok')?.textContent).toContain('Recibimos tu pedido #7');
+    expect(html.querySelector('.pedido-numero')?.textContent).toContain('#7');
+  });
+
+  it('un error 401 se muestra como sesión expirada', async () => {
+    const { fixture, http, html } = crearPagina([SCOPE_PEDIDOS_WRITE]);
+    await fixture.whenStable();
+
+    html.querySelector<HTMLButtonElement>('.form-row button')!.click();
+    http
+      .expectOne((r) => r.method === 'POST')
+      .flush({}, { status: 401, statusText: 'Unauthorized' });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(html.querySelector('.aviso.fail')?.textContent).toContain('Tu sesión expiró');
   });
 });

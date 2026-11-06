@@ -1,22 +1,28 @@
 <header class="topbar">
-  <a class="brand" routerLink="/">Tecno<span>Market</span></a>
-  <nav>
-    <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Inicio</a>
-    <a routerLink="/pedidos" routerLinkActive="active">Pedidos</a>
-    <a routerLink="/productos" routerLinkActive="active">Productos</a>
-    <a routerLink="/perfil" routerLinkActive="active">Perfil</a>
-    <a routerLink="/admin" routerLinkActive="active">Administración</a>
-  </nav>
-  <div class="session">
-    @if (auth.isAuthenticated()) {
-      <span class="user">{{ auth.claims()?.usuario }}</span>
-      <button class="btn ghost light" (click)="auth.logout()">Cerrar sesión</button>
-    } @else {
-      <button class="btn light" (click)="auth.login()">Iniciar sesión</button>
-    }
+  <div class="topbar-inner">
+    <a class="brand" routerLink="/">TecnoMarket</a>
+    <nav aria-label="Principal">
+      <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Inicio</a>
+      <a routerLink="/productos" routerLinkActive="active">Catálogo</a>
+      <a routerLink="/pedidos" routerLinkActive="active">Mis pedidos</a>
+      <a routerLink="/perfil" routerLinkActive="active">Mi cuenta</a>
+      <a routerLink="/admin" routerLinkActive="active">Administración</a>
+    </nav>
+    <div class="session">
+      @if (auth.isAuthenticated()) {
+        <span class="user">{{ auth.claims()?.usuario }}</span>
+        <button class="btn ghost" (click)="auth.logout()">Cerrar sesión</button>
+      } @else {
+        <button class="btn" (click)="auth.login()">Iniciar sesión</button>
+      }
+    </div>
   </div>
 </header>
 
 <main class="container">
   <router-outlet />
 </main>
+
+<footer class="pie">
+  <p>TecnoMarket, proyecto Cloud Native de Duoc UC.</p>
+</footer>

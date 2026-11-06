@@ -1,69 +1,108 @@
-import { Component, inject } from '@angular/core';
+import { Component, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
 import { AuthService } from '../core/auth.service';
+import { Producto } from '../core/models';
+import { ProductosService } from '../core/productos.service';
+import { ProductoIcono } from './producto-icono';
 
 @Component({
   selector: 'app-home',
-  imports: [RouterLink],
+  imports: [RouterLink, ProductoIcono],
   template: `
-    <section class="hero">
-      <h1>TecnoMarket</h1>
-      <p>
-        Gestión de pedidos y productos sobre microservicios en AWS, protegida con Amazon Cognito
-        (OAuth 2.0 / OpenID Connect con Authorization Code + PKCE).
-      </p>
-    </section>
-
     @if (aviso() === 'login') {
-      <div class="alert warn">Debes iniciar sesión para acceder a esa sección.</div>
+      <div class="aviso info" role="status">Inicia sesión para entrar a esa sección.</div>
     }
     @if (aviso() === 'rol') {
-      <div class="alert warn">Tu usuario no pertenece al grupo necesario para acceder a esa sección.</div>
+      <div class="aviso info" role="status">Esa sección es solo para administradores.</div>
     }
     @if (auth.error()) {
-      <div class="alert error">{{ auth.error() }}</div>
+      <div class="aviso fail" role="alert">{{ auth.error() }}</div>
     }
 
-    @if (auth.claims(); as c) {
-      <div class="card">
-        <h2>Sesión iniciada</h2>
+    <section class="portada">
+      <div class="portada-texto">
+        <h1>Equipa tu escritorio</h1>
         <p>
-          Usuario: <strong>{{ c.usuario }}</strong>
+          Teclados, monitores, mouse y notebooks con el stock al día. Elige, compra y sigue tu
+          pedido desde tu cuenta.
         </p>
-        <p>
-          Grupos:
-          @for (g of c.grupos; track g) {
-            <span class="badge">{{ g }}</span>
-          } @empty {
-            <span class="muted">sin grupo asignado</span>
+        @if (auth.isAuthenticated()) {
+          <a class="btn grande" routerLink="/productos">Ver el catálogo</a>
+        } @else {
+          <button class="btn grande" (click)="auth.login()">Iniciar sesión para comprar</button>
+          <span class="portada-nota"
+            >¿Primera vez? Crea tu cuenta en la misma pantalla de inicio de sesión.</span
+          >
+        }
+      </div>
+
+      <nav class="vitrina" aria-label="Categorías">
+        <a routerLink="/productos" [queryParams]="{ buscar: 'monitor' }">
+          <app-producto-icono nombre="monitor" />Monitores
+        </a>
+        <a routerLink="/productos" [queryParams]="{ buscar: 'teclado' }">
+          <app-producto-icono nombre="teclado" />Teclados
+        </a>
+        <a routerLink="/productos" [queryParams]="{ buscar: 'mouse' }">
+          <app-producto-icono nombre="mouse" />Mouse
+        </a>
+        <a routerLink="/productos" [queryParams]="{ buscar: 'notebook' }">
+          <app-producto-icono nombre="notebook" />Notebooks
+        </a>
+        <a routerLink="/productos" [queryParams]="{ buscar: 'audífono' }">
+          <app-producto-icono nombre="audífono" />Audio
+        </a>
+        <a routerLink="/productos" [queryParams]="{ buscar: 'cable' }">
+          <app-producto-icono nombre="cable" />Cables
+        </a>
+      </nav>
+    </section>
+
+    @if (destacados().length > 0) {
+      <section class="bloque">
+        <div class="encabezado">
+          <h2>Del catálogo</h2>
+          <a routerLink="/productos">Ver todos los productos</a>
+        </div>
+        <ul class="catalogo">
+          @for (p of destacados(); track p.id) {
+            <li class="producto">
+              <div class="producto-foto"><app-producto-icono [nombre]="p.nombre" /></div>
+              <h2>{{ p.nombre }}</h2>
+              <p class="precio">{{ clp(p.precio) }}</p>
+            </li>
           }
-        </p>
-        <p class="actions">
-          <a class="btn" routerLink="/pedidos">Ver pedidos</a>
-          <a class="btn ghost" routerLink="/productos">Ver productos</a>
-          <a class="btn ghost" routerLink="/perfil">Ver mi perfil y token</a>
-        </p>
-      </div>
-    } @else {
-      <div class="card">
-        <h2>Comienza aquí</h2>
-        <p>
-          El inicio de sesión y el registro se realizan en la pantalla de Amazon Cognito. Si aún no tienes
-          cuenta, usa el enlace <em>Sign up</em> de esa pantalla.
-        </p>
-        <p class="actions">
-          <button class="btn" (click)="auth.login()">Iniciar sesión / Registrarse</button>
-        </p>
-      </div>
+        </ul>
+      </section>
     }
   `,
 })
 export class HomePage {
   protected readonly auth = inject(AuthService);
+  private readonly productos = inject(ProductosService);
   private readonly route = inject(ActivatedRoute);
+  private readonly formato = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' });
+
   protected readonly aviso = toSignal(this.route.queryParamMap.pipe(map((p) => p.get('aviso'))), {
     initialValue: null,
   });
+  protected readonly destacados = signal<Producto[]>([]);
+
+  constructor() {
+    // El catálogo requiere sesión: solo se pide cuando la persona ya inició sesión.
+    effect(() => {
+      if (this.auth.isAuthenticated()) {
+        this.productos.listar().subscribe({
+          next: (data) => this.destacados.set(data.filter((p) => p.stock > 0).slice(0, 3)),
+          error: () => this.destacados.set([]),
+        });
+      }
+    });
+  }
+
+  protected clp(valor: number): string {
+    return this.formato.format(valor);
+  }
 }

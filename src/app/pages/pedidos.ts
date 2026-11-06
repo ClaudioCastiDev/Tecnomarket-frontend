@@ -1,12 +1,16 @@
 import { DatePipe } from '@angular/common';
-import { Component, inject, signal } from '@angular/core';
-import { Pedido } from '../core/models';
+import { Component, computed, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
+import { AuthService } from '../core/auth.service';
+import { Pedido, Producto } from '../core/models';
 import { PedidosService } from '../core/pedidos.service';
+import { ProductosService } from '../core/productos.service';
+import { SCOPE_PEDIDOS_WRITE } from '../core/scopes';
 import { Llamada, llamadaError, llamadaOk } from './llamada';
 
 @Component({
   selector: 'app-pedidos',
-  imports: [DatePipe],
+  imports: [DatePipe, RouterLink],
   template: `
     <h1>Pedidos</h1>
 
@@ -51,14 +55,35 @@ import { Llamada, llamadaError, llamadaOk } from './llamada';
 
     <div class="card">
       <h2>Crear pedido</h2>
-      <p class="muted">
-        Crear pedidos requiere el scope <code>rs-api-pedidos/pedidos-write</code>. Este front solo solicita
-        permisos de lectura, por lo que el API Gateway debe responder <strong>403</strong>.
-      </p>
+      @if (puedeCrear) {
+        <p class="muted">
+          Al crear un pedido, el backend lo guarda y publica el evento <code>pedido.creado</code> en
+          RabbitMQ. El descuento de stock, el ticket y la notificación se procesan
+          <strong>de forma asíncrona</strong>: revisa el stock en
+          <a routerLink="/productos">Productos</a> unos segundos después.
+        </p>
+        <p class="muted">
+          Si escribes un producto que no está en el catálogo, el pedido se crea igual, pero el
+          servicio de productos rechaza el mensaje y este termina en la cola de errores (DLQ).
+        </p>
+      } @else {
+        <p class="muted">
+          Tu sesión no tiene el scope <code>rs-api-pedidos/pedidos-write</code>, así que el API
+          Gateway responderá <strong>403</strong>. Cierra sesión y vuelve a entrar para obtener un
+          token con ese permiso.
+        </p>
+      }
       <div class="form-row">
-        <input #producto placeholder="Producto" value="Notebook" />
+        <input #producto list="catalogo" placeholder="Producto" [value]="productoInicial()" />
+        <datalist id="catalogo">
+          @for (p of catalogo(); track p.id) {
+            <option [value]="p.nombre">Stock: {{ p.stock }}</option>
+          }
+        </datalist>
         <input #cantidad type="number" min="1" value="1" />
-        <button class="btn" (click)="crear(producto.value, +cantidad.value)">Crear pedido</button>
+        <button class="btn" (click)="crear(producto.value, +cantidad.value)" [disabled]="creando()">
+          Crear pedido
+        </button>
       </div>
     </div>
 
@@ -72,21 +97,41 @@ import { Llamada, llamadaError, llamadaOk } from './llamada';
 })
 export class PedidosPage {
   private readonly servicio = inject(PedidosService);
+  private readonly productos = inject(ProductosService);
   protected readonly pedidos = signal<Pedido[]>([]);
+  /** Catálogo para sugerir nombres exactos: productos descuenta el stock buscando por nombre. */
+  protected readonly catalogo = signal<Producto[]>([]);
+  protected readonly productoInicial = computed(() => this.catalogo()[0]?.nombre ?? '');
   protected readonly cargando = signal(false);
+  protected readonly creando = signal(false);
   protected readonly llamada = signal<Llamada | null>(null);
+  protected readonly puedeCrear = inject(AuthService).hasScope(SCOPE_PEDIDOS_WRITE);
 
   constructor() {
     this.cargar();
+    this.cargarCatalogo();
   }
 
-  protected cargar(): void {
+  /** Si el catálogo no carga, el formulario sigue funcionando con texto libre. */
+  private cargarCatalogo(): void {
+    this.productos.listar().subscribe({
+      next: (data) => this.catalogo.set(data),
+      error: () => this.catalogo.set([]),
+    });
+  }
+
+  /** @param mostrarResultado false al recargar tras crear, para no tapar el mensaje del POST. */
+  protected cargar(mostrarResultado = true): void {
     this.cargando.set(true);
     this.servicio.listar().subscribe({
       next: (data) => {
         this.pedidos.set(data);
         this.cargando.set(false);
-        this.llamada.set(llamadaOk('GET', this.servicio.ruta, 200, `${data.length} pedido(s) recibidos`));
+        if (mostrarResultado) {
+          this.llamada.set(
+            llamadaOk('GET', this.servicio.ruta, 200, `${data.length} pedido(s) recibidos`),
+          );
+        }
       },
       error: (e) => {
         this.pedidos.set([]);
@@ -97,12 +142,24 @@ export class PedidosPage {
   }
 
   protected crear(producto: string, cantidad: number): void {
-    this.servicio.crear(producto, cantidad).subscribe({
+    this.creando.set(true);
+    this.servicio.crear(producto.trim(), cantidad).subscribe({
       next: (p) => {
-        this.llamada.set(llamadaOk('POST', this.servicio.ruta, 201, `Pedido #${p.id} creado`));
-        this.cargar();
+        this.creando.set(false);
+        this.llamada.set(
+          llamadaOk(
+            'POST',
+            this.servicio.ruta,
+            201,
+            `Pedido #${p.id} creado · evento enviado a RabbitMQ`,
+          ),
+        );
+        this.cargar(false);
       },
-      error: (e) => this.llamada.set(llamadaError('POST', this.servicio.ruta, e)),
+      error: (e) => {
+        this.creando.set(false);
+        this.llamada.set(llamadaError('POST', this.servicio.ruta, e));
+      },
     });
   }
 }

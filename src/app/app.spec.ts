@@ -28,7 +28,7 @@ describe('App', () => {
     await fixture.whenStable();
     const html = fixture.nativeElement as HTMLElement;
 
-    expect(html.querySelector('.brand')?.textContent).toContain('Pedidos');
+    expect(html.querySelector('.brand')?.textContent).toContain('TecnoMarket');
     expect(html.querySelector('.session button')?.textContent).toContain('Iniciar sesión');
   });
 });

@@ -6,13 +6,19 @@ export const SCOPE_PRODUCTOS_WRITE = 'rs-api-productos/productos-write';
 
 /**
  * Scopes que el front solicita al iniciar sesión.
- * Se piden solo los de LECTURA: por eso crear un pedido devuelve 403 en el API Gateway
- * (el token no trae el scope de escritura), lo que permite demostrar la autorización por scope.
+ * - pedidos-write: permite crear pedidos, que es lo que dispara el flujo asíncrono
+ *   (evento "pedido.creado" en RabbitMQ -> stock, ticket y notificación).
+ * - productos-write NO se solicita: el catálogo es de solo lectura desde el front, y
+ *   cualquier escritura sobre productos devuelve 403 (autorización por scope).
+ *
+ * Requisito en Cognito: el app client debe tener habilitado el scope
+ * rs-api-pedidos/pedidos-write en "Custom scopes"; si no, el login falla con invalid_scope.
  */
 export const SCOPES_SOLICITADOS = [
   'openid',
   'email',
   'profile',
   SCOPE_PEDIDOS_READ,
+  SCOPE_PEDIDOS_WRITE,
   SCOPE_PRODUCTOS_READ,
 ] as const;

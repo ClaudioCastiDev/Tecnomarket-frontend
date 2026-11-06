@@ -23,7 +23,7 @@ debe estar registrada en Cognito como *Allowed callback URL* y *Allowed sign-out
 ```powershell
 npm install
 npm start          # http://localhost:4200
-npm test           # 10 pruebas unitarias
+npm test           # 13 pruebas unitarias
 npm run build      # salida en dist/
 ```
 
@@ -47,6 +47,17 @@ src/app/
 ## Seguridad
 
 - El interceptor adjunta el access token **solo** a las llamadas hacia `apiUrl`.
-- El front solicita únicamente scopes de lectura; crear un pedido devuelve **403** en el API Gateway,
-  lo que demuestra la autorización por scope.
+- El front solicita `pedidos-read`, `pedidos-write` y `productos-read`. **No** solicita `productos-write`,
+  así que cualquier escritura sobre productos devuelve **403** (autorización por scope).
+  El app client de Cognito debe tener habilitado `rs-api-pedidos/pedidos-write` en *Custom scopes*.
+- Un token inválido o ausente es rechazado con **401** por el authorizer del API Gateway.
 - Los roles se leen del claim `cognito:groups` y los scopes del claim `scope` del access token.
+
+## Mensajería asíncrona (RabbitMQ)
+
+Crear un pedido en **Pedidos** dispara el flujo asíncrono: el backend guarda el pedido y publica el evento
+`pedido.creado`; productos descuenta el stock y mensajería genera el ticket y la notificación.
+
+- El campo *Producto* sugiere los nombres del catálogo, porque productos descuenta el stock buscando por nombre.
+- Para la demo, revisa **Productos** unos segundos después de crear el pedido: el stock habrá bajado.
+- Si escribes un producto que no existe, el pedido se crea, pero el mensaje termina en la DLQ de stock.
